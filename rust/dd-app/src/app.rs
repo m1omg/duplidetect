@@ -225,7 +225,14 @@ impl eframe::App for App {
                     self.scanning = false;
                     self.incoming = None;
                     if let Some(r) = &self.result {
-                        self.expanded = (0..r.groups.len().min(3)).collect();
+                        // Open everything when the result is small enough to
+                        // take in at a glance; only fall back to the first few
+                        // when a large library would unfold into thousands of rows.
+                        self.expanded = if r.groups.len() <= 20 {
+                            (0..r.groups.len()).collect()
+                        } else {
+                            (0..3).collect()
+                        };
                     }
                     self.apply_keep_rule();
                 }
@@ -423,6 +430,15 @@ impl App {
                 }
                 if ui.add_enabled(!self.marked.is_empty(), egui::Button::new("Clear Selection")).clicked() {
                     self.marked.clear();
+                }
+                let total = self.result.as_ref().map(|r| r.groups.len()).unwrap_or(0);
+                let all_open = self.expanded.len() >= total && total > 0;
+                if ui.button(if all_open { "Collapse All" } else { "Expand All" }).clicked() {
+                    if all_open {
+                        self.expanded.clear();
+                    } else {
+                        self.expanded = (0..total).collect();
+                    }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let marked = self.marked_files();

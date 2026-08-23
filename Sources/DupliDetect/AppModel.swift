@@ -155,7 +155,12 @@ public final class AppModel: ObservableObject {
                 self.result = outcome
                 self.isScanning = false
                 self.phase = .finished
-                self.expandedGroups = Set(outcome.groups.prefix(3).map(\.id))
+                // Open everything when the result is small enough to take in at a
+                // glance; only fall back to the first few when a large library
+                // would otherwise unfold into thousands of rows.
+                self.expandedGroups = outcome.groups.count <= 20
+                    ? Set(outcome.groups.map(\.id))
+                    : Set(outcome.groups.prefix(3).map(\.id))
                 self.applyKeepRule()
             }
         }
