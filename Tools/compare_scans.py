@@ -5,20 +5,23 @@ import json, subprocess, sys, os
 SWIFT = "./build/paritydump"
 RUST  = "rust/target/release/ddcli"
 
-def swift_scan(d, s):
-    return json.loads(subprocess.run([SWIFT, "scan", d, str(s)],
+LEVELS = {"Perfect match": "perfect", "Very strict": "very-strict", "Strict": "strict",
+          "Relaxed": "relaxed", "Very relaxed": "very-relaxed"}
+
+def swift_scan(d, level):
+    return json.loads(subprocess.run([SWIFT, "scan", d, level],
                                      capture_output=True, text=True).stdout)
 
-def rust_scan(d, s):
-    return json.loads(subprocess.run([RUST, "scan", d, "--sensitivity", str(s), "--json"],
+def rust_scan(d, level):
+    return json.loads(subprocess.run([RUST, "scan", d, "--level", LEVELS[level], "--json"],
                                      capture_output=True, text=True).stdout)
 
 def key(groups):
     return {(g["kind"], tuple(g["paths"])): g for g in groups}
 
-def compare(name, d, sensitivities):
+def compare(name, d, levels):
     problems = []
-    for s in sensitivities:
+    for s in levels:
         a, b = swift_scan(d, s), rust_scan(d, s)
         ka, kb = key(a["groups"]), key(b["groups"])
         only_swift = set(ka) - set(kb)
@@ -46,7 +49,7 @@ def compare(name, d, sensitivities):
 
 if __name__ == "__main__":
     base = sys.argv[1] if len(sys.argv) > 1 else "testdata"
-    sens = [0.0, 0.35, 0.5, 1.0]
+    sens = list(LEVELS.keys())
     if os.path.isdir(os.path.join(base, "fixtures")):
         ok = compare("fixtures", os.path.join(base, "fixtures"), sens)
     else:

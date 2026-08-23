@@ -9,7 +9,7 @@ use std::path::PathBuf;
 fn usage() -> ! {
     eprintln!(
         "usage:\n  \
-         ddcli scan DIR [--sensitivity S] [--json]\n  \
+         ddcli scan DIR [--level perfect|very-strict|strict|relaxed|very-relaxed] [--json]\n  \
          ddcli selftest\n"
     );
     std::process::exit(2)
@@ -33,8 +33,14 @@ fn scan(args: &[String]) {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--sensitivity" if i + 1 < args.len() => {
-                options.sensitivity = args[i + 1].parse().unwrap_or(0.35);
+            "--level" if i + 1 < args.len() => {
+                match dd_core::matcher::MatchLevel::parse(&args[i + 1]) {
+                    Some(level) => options.level = level,
+                    None => {
+                        eprintln!("unknown match level: {}", args[i + 1]);
+                        std::process::exit(2);
+                    }
+                }
                 i += 1;
             }
             "--json" => as_json = true,

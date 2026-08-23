@@ -4,8 +4,7 @@ public struct ScanOptions {
     public var includeSubfolders = true
     public var findExactDuplicates = true
     public var findSimilarAudio = true
-    /// 0 = strictest, 1 = loosest.
-    public var sensitivity: Double = 0.35
+    public var matchLevel: FingerprintMatcher.Level = .perfect
     /// Ignore files shorter than this; very short clips match each other easily.
     public var minimumDuration: Double = 2.0
     /// Only fingerprint the first N seconds of each file.
@@ -118,7 +117,7 @@ public final class Scanner {
             }
 
             progress(.matching)
-            let matcherOptions = FingerprintMatcher.Options.forSensitivity(options.sensitivity)
+            let matcherOptions = FingerprintMatcher.Options.forLevel(options.matchLevel)
             let matches = FingerprintMatcher.groups(fingerprints: fingerprints,
                                                     durations: files.map(\.contentDuration),
                                                     options: matcherOptions,

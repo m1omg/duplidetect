@@ -185,11 +185,34 @@ rather than winning simply for being longer.
 
 ### Match strictness
 
-Only affects the audio-matching pass.
+Only affects the audio-matching pass. **Perfect match is the default.**
 
-- **Very strict / Strict** — near-identical recordings only. Safe for unattended cleanup.
-- **Relaxed / Very relaxed** — also groups heavily re-encoded or edited copies.
-  Review these before trashing anything.
+| Level | Groups |
+|---|---|
+| **Perfect match** | The same recording end to end — true 1:1 duplicates |
+| Very strict | Near-identical recordings, including a clip taken from a longer one |
+| Strict | Near-identical recordings, with a little more tolerance |
+| Relaxed | Also heavily re-encoded copies — review before deleting |
+| Very relaxed | Loosely similar audio — expect false positives |
+
+**Perfect match is not simply a tighter threshold**, because a tighter threshold
+cannot express what "1:1" means. Measured across the test corpus, genuine
+duplicates of one master span a bit-error rate of 0.000 (any lossless
+conversion) up to 0.086 (Ogg Vorbis q5), while a four-second excerpt of a
+ten-second recording of the same tune scores 0.101 — the two populations very
+nearly touch, so no threshold separates them reliably.
+
+So Perfect match adds a *structural* requirement instead: the matching region
+must cover essentially the whole of **both** files, judged against the longer
+one. An excerpt aligns perfectly over the whole of its own length, which is
+exactly why measuring against the shorter file cannot exclude it. Silent padding
+still does not count — a copy with two seconds of leading silence is trimmed
+before comparison and remains a 1:1 duplicate.
+
+The audio tolerance at Perfect match is the same as Very strict; the structural
+rule does the work. Every format conversion above still groups: FLAC, AIFF, CAF,
+ALAC, 192 kbps MP3, 96 kbps MP3, 128 kbps AAC and Ogg Vorbis all match their
+source.
 
 ## How the fingerprinting works
 

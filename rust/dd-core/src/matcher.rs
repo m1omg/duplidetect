@@ -18,6 +18,69 @@ const MINIMUM_VOTES: usize = 6;
 /// A hash shared by this many entries carries no information.
 const MAXIMUM_ENTRIES_PER_HASH: usize = 400;
 
+/// How demanding matching should be.
+///
+/// `Perfect` is not merely a tighter bit-error threshold. Bit-error rate alone
+/// cannot separate a genuine duplicate from an excerpt: measured across the
+/// corpus, real duplicates of one master span 0.000 (any lossless conversion)
+/// up to 0.086 (Ogg Vorbis q5), while a four-second excerpt of a ten-second
+/// recording of the same tune scores 0.101 — the two populations nearly touch.
+/// So `Perfect` adds a structural requirement instead: the matching region must
+/// cover essentially the whole of *both* files. That is what "1:1" means, and
+/// it rules out excerpts however well they align.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MatchLevel {
+    Perfect,
+    VeryStrict,
+    Strict,
+    Relaxed,
+    VeryRelaxed,
+}
+
+impl MatchLevel {
+    pub const ALL: [MatchLevel; 5] = [
+        MatchLevel::Perfect,
+        MatchLevel::VeryStrict,
+        MatchLevel::Strict,
+        MatchLevel::Relaxed,
+        MatchLevel::VeryRelaxed,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            MatchLevel::Perfect => "Perfect match",
+            MatchLevel::VeryStrict => "Very strict",
+            MatchLevel::Strict => "Strict",
+            MatchLevel::Relaxed => "Relaxed",
+            MatchLevel::VeryRelaxed => "Very relaxed",
+        }
+    }
+
+    pub fn explanation(&self) -> &'static str {
+        match self {
+            MatchLevel::Perfect => "The same recording end to end — true 1:1 duplicates. A shorter excerpt is not grouped.",
+            MatchLevel::VeryStrict => "Near-identical recordings, including a clip taken from a longer one.",
+            MatchLevel::Strict => "Near-identical recordings, with a little more tolerance.",
+            MatchLevel::Relaxed => "Also groups heavily re-encoded copies. Review before deleting.",
+            MatchLevel::VeryRelaxed => "Groups loosely similar audio. Expect false positives.",
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MatchLevel::Perfect => "perfect",
+            MatchLevel::VeryStrict => "very-strict",
+            MatchLevel::Strict => "strict",
+            MatchLevel::Relaxed => "relaxed",
+            MatchLevel::VeryRelaxed => "very-relaxed",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<MatchLevel> {
+        MatchLevel::ALL.into_iter().find(|l| l.as_str() == text)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Options {
     pub maximum_bit_error_rate: f64,
@@ -26,6 +89,11 @@ pub struct Options {
     pub maximum_shape_distance: f64,
     pub stationary_duration_tolerance: f64,
     pub stationary_duration_slack: f64,
+    /// When set, the matching region must cover essentially the whole of both
+    /// files rather than a fraction of the shorter one.
+    pub require_whole_file: bool,
+    /// The fraction of the *longer* file the overlap must then cover.
+    pub whole_file_fraction: f64,
 }
 
 impl Default for Options {
@@ -37,17 +105,46 @@ impl Default for Options {
             maximum_shape_distance: 0.27,
             stationary_duration_tolerance: 0.10,
             stationary_duration_slack: 0.5,
+            require_whole_file: false,
+            whole_file_fraction: 0.95,
         }
     }
 }
 
 impl Options {
-    pub fn for_sensitivity(sensitivity: f64) -> Self {
-        let amount = sensitivity.clamp(0.0, 1.0);
-        Options {
-            maximum_bit_error_rate: 0.12 + 0.18 * amount,
-            maximum_shape_distance: 0.20 + 0.20 * amount,
-            ..Options::default()
+    pub fn for_level(level: MatchLevel) -> Self {
+        let base = Options::default();
+        match level {
+            // The same audio tolerance as Very strict, plus whole-file
+            // correspondence. The structural rule excludes non-duplicates, so
+            // the threshold stays generous enough for Ogg Vorbis at 0.086.
+            MatchLevel::Perfect => Options {
+                maximum_bit_error_rate: 0.12,
+                maximum_shape_distance: 0.20,
+                require_whole_file: true,
+                stationary_duration_tolerance: 0.05,
+                ..base
+            },
+            MatchLevel::VeryStrict => Options {
+                maximum_bit_error_rate: 0.12,
+                maximum_shape_distance: 0.20,
+                ..base
+            },
+            MatchLevel::Strict => Options {
+                maximum_bit_error_rate: 0.18,
+                maximum_shape_distance: 0.27,
+                ..base
+            },
+            MatchLevel::Relaxed => Options {
+                maximum_bit_error_rate: 0.24,
+                maximum_shape_distance: 0.33,
+                ..base
+            },
+            MatchLevel::VeryRelaxed => Options {
+                maximum_bit_error_rate: 0.30,
+                maximum_shape_distance: 0.40,
+                ..base
+            },
         }
     }
 }
@@ -180,8 +277,17 @@ pub fn groups(
         }
         let overlap_seconds = overlap as f64 * seconds_per_frame();
         let shorter = a.values.len().min(b.values.len());
+        let longer = a.values.len().max(b.values.len());
+        // A 1:1 duplicate lines up across the whole of both files. Measuring the
+        // overlap against the *longer* one is what rules out an excerpt, which
+        // otherwise aligns perfectly over the whole of its own length.
+        let enough_overlap = if options.require_whole_file {
+            overlap as f64 >= longer as f64 * options.whole_file_fraction
+        } else {
+            overlap as f64 >= shorter as f64 * options.minimum_overlap_fraction
+        };
         if overlap_seconds < options.minimum_overlap_seconds
-            || (overlap as f64) < shorter as f64 * options.minimum_overlap_fraction
+            || !enough_overlap
             || error_rate > options.maximum_bit_error_rate
         {
             continue;

@@ -11,6 +11,42 @@ public enum FingerprintMatcher {
     /// Aligned frames a pair needs before it is even scored.
     private static let minimumVotes = 6
 
+    /// How demanding matching should be.
+    ///
+    /// `perfect` is not merely a tighter bit-error threshold. Bit-error rate
+    /// alone cannot separate a genuine duplicate from an excerpt: measured
+    /// across the corpus, real duplicates of one master span 0.000 (any
+    /// lossless conversion) up to 0.086 (Ogg Vorbis q5), while a four-second
+    /// excerpt of a ten-second recording of the same tune scores 0.101 — the
+    /// two populations nearly touch. So `perfect` adds a structural
+    /// requirement instead: the matching region must cover essentially the
+    /// whole of *both* files. That is what "1:1" means, and it rules out
+    /// excerpts however well they align.
+    public enum Level: String, CaseIterable, Identifiable {
+        case perfect = "Perfect match"
+        case veryStrict = "Very strict"
+        case strict = "Strict"
+        case relaxed = "Relaxed"
+        case veryRelaxed = "Very relaxed"
+
+        public var id: String { rawValue }
+
+        public var explanation: String {
+            switch self {
+            case .perfect:
+                return "The same recording end to end — true 1:1 duplicates. A shorter excerpt is not grouped."
+            case .veryStrict:
+                return "Near-identical recordings, including a clip taken from a longer one."
+            case .strict:
+                return "Near-identical recordings, with a little more tolerance."
+            case .relaxed:
+                return "Also groups heavily re-encoded copies. Review before deleting."
+            case .veryRelaxed:
+                return "Groups loosely similar audio. Expect false positives."
+            }
+        }
+    }
+
     public struct Options {
         /// Highest bit-error rate still considered the same audio.
         /// Same master re-encoded typically lands under 0.15; unrelated audio sits near 0.5.
@@ -30,15 +66,38 @@ public enum FingerprintMatcher {
         public var stationaryDurationTolerance: Double = 0.10
         /// Absolute slack, so encoder padding never breaks a short clip.
         public var stationaryDurationSlack: Double = 0.5
+        /// When set, the matching region must cover essentially the whole of
+        /// both files rather than a fraction of the shorter one.
+        public var requireWholeFile = false
+        /// The fraction of the *longer* file the overlap must then cover.
+        public var wholeFileFraction: Double = 0.95
 
         public init() {}
 
-        public static func forSensitivity(_ sensitivity: Double) -> Options {
+        public static func forLevel(_ level: Level) -> Options {
             var options = Options()
-            // sensitivity 0 = only near-identical audio, 1 = catch loose matches.
-            let amount = max(0, min(1, sensitivity))
-            options.maximumBitErrorRate = 0.12 + 0.18 * amount
-            options.maximumShapeDistance = 0.20 + 0.20 * amount
+            switch level {
+            case .perfect:
+                // The same audio tolerance as Very strict, plus whole-file
+                // correspondence. The structural rule excludes non-duplicates,
+                // so the threshold stays generous enough for Ogg Vorbis at 0.086.
+                options.maximumBitErrorRate = 0.12
+                options.maximumShapeDistance = 0.20
+                options.requireWholeFile = true
+                options.stationaryDurationTolerance = 0.05
+            case .veryStrict:
+                options.maximumBitErrorRate = 0.12
+                options.maximumShapeDistance = 0.20
+            case .strict:
+                options.maximumBitErrorRate = 0.18
+                options.maximumShapeDistance = 0.27
+            case .relaxed:
+                options.maximumBitErrorRate = 0.24
+                options.maximumShapeDistance = 0.33
+            case .veryRelaxed:
+                options.maximumBitErrorRate = 0.30
+                options.maximumShapeDistance = 0.40
+            }
             return options
         }
     }
@@ -146,8 +205,15 @@ public enum FingerprintMatcher {
 
             let overlapSeconds = Double(overlap) * Fingerprint.secondsPerFrame
             let shorter = min(a.values.count, b.values.count)
+            let longer = max(a.values.count, b.values.count)
+            // A 1:1 duplicate lines up across the whole of both files. Measuring
+            // the overlap against the *longer* one is what rules out an excerpt,
+            // which otherwise aligns perfectly over the whole of its own length.
+            let enoughOverlap = options.requireWholeFile
+                ? Double(overlap) >= Double(longer) * options.wholeFileFraction
+                : Double(overlap) >= Double(shorter) * options.minimumOverlapFraction
             guard overlapSeconds >= options.minimumOverlapSeconds,
-                  Double(overlap) >= Double(shorter) * options.minimumOverlapFraction,
+                  enoughOverlap,
                   errorRate <= options.maximumBitErrorRate else { continue }
 
             // Map bit-error rate onto a 0...1 confidence; 0.5 is pure chance.

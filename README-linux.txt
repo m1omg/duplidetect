@@ -17,7 +17,10 @@ additionally uses ALSA, which is standard.
 Using it
 --------
 1. Drag folders onto the window, or click "Choose Folder...".
-2. Pick what to look for and how strict matching should be.
+2. Pick what to look for and how strict matching should be. The default,
+   "Perfect match", groups only files that are the same recording from start to
+   finish -- true 1:1 duplicates. Looser levels also group excerpts and heavily
+   re-encoded copies; review those before deleting anything.
 3. Click "Scan for Duplicates".
 
 Files you mark are moved to the desktop Trash, never deleted permanently, so a

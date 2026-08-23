@@ -3,6 +3,7 @@
 use crate::scanner::{self, Phase, ScanOptions, ScanResult};
 use crate::{platform, preview::Preview};
 use dd_core::keep::KeepRule;
+use dd_core::matcher::MatchLevel;
 use dd_core::model::{AudioFile, MatchKind};
 use egui::{Color32, RichText};
 use std::collections::HashSet;
@@ -345,12 +346,16 @@ impl App {
                 ui.checkbox(&mut self.options.find_similar_audio, "Same audio in any format");
                 if self.options.find_similar_audio {
                     ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        ui.label("Match strictness");
-                        ui.label(RichText::new(strictness_label(self.options.sensitivity)).weak());
-                    });
-                    ui.add(egui::Slider::new(&mut self.options.sensitivity, 0.0..=1.0).show_value(false));
-                    ui.label(RichText::new(strictness_help(self.options.sensitivity)).weak().size(10.0));
+                    ui.label("Match strictness");
+                    egui::ComboBox::from_id_salt("level")
+                        .selected_text(self.options.level.label())
+                        .width(280.0)
+                        .show_ui(ui, |ui| {
+                            for level in MatchLevel::ALL {
+                                ui.selectable_value(&mut self.options.level, level, level.label());
+                            }
+                        });
+                    ui.label(RichText::new(self.options.level.explanation()).weak().size(10.0));
                 }
 
                 ui.add_space(8.0);
@@ -639,22 +644,7 @@ enum Action {
     Reveal,
 }
 
-fn strictness_label(s: f64) -> &'static str {
-    match s {
-        s if s < 0.25 => "Very strict",
-        s if s < 0.5 => "Strict",
-        s if s < 0.75 => "Relaxed",
-        _ => "Very relaxed",
-    }
-}
 
-fn strictness_help(s: f64) -> &'static str {
-    if s < 0.5 {
-        "Only near-identical recordings are grouped."
-    } else {
-        "Also groups heavily re-encoded or edited copies. Review these before deleting."
-    }
-}
 
 fn phase_text(phase: Phase) -> String {
     match phase {

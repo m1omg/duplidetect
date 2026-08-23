@@ -16,8 +16,7 @@ pub struct ScanOptions {
     pub include_subfolders: bool,
     pub find_exact_duplicates: bool,
     pub find_similar_audio: bool,
-    /// 0 = strictest, 1 = loosest.
-    pub sensitivity: f64,
+    pub level: matcher::MatchLevel,
     pub minimum_duration: f64,
     pub fingerprint_seconds: f64,
     pub skip_hidden_files: bool,
@@ -29,7 +28,7 @@ impl Default for ScanOptions {
             include_subfolders: true,
             find_exact_duplicates: true,
             find_similar_audio: true,
-            sensitivity: 0.35,
+            level: matcher::MatchLevel::Perfect,
             minimum_duration: 2.0,
             fingerprint_seconds: 120.0,
             skip_hidden_files: true,
@@ -190,7 +189,7 @@ pub fn run<F: Fn(Phase) + Sync>(
         let matches = matcher::groups(
             &fingerprints,
             &durations,
-            &matcher::Options::for_sensitivity(options.sensitivity),
+            &matcher::Options::for_level(options.level),
         );
         similar_groups = matches
             .into_iter()

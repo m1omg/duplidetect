@@ -4,7 +4,7 @@
 //! a matching bug.
 
 use dd_core::fingerprint::Fingerprint;
-use dd_core::matcher::{groups, Options};
+use dd_core::matcher::{groups, MatchLevel, Options};
 use serde_json::Value;
 use std::path::Path;
 
@@ -68,7 +68,7 @@ fn swift_similar_groups(corpus: &str) -> Vec<Vec<String>> {
 
 fn check(corpus: &str) {
     let (names, prints, durations) = load(corpus);
-    let found = groups(&prints, &durations, &Options::for_sensitivity(0.35));
+    let found = groups(&prints, &durations, &Options::for_level(MatchLevel::Perfect));
 
     let mut actual: Vec<Vec<String>> = found.iter()
         .map(|g| {

@@ -144,9 +144,10 @@ func dumpFingerprints(files: [String], pcmDir: String?) {
 
 // MARK: - canonical scan report
 
-func dumpScan(directory: String, sensitivity: Double) {
+func dumpScan(directory: String, level: String) {
     var options = ScanOptions()
-    options.sensitivity = sensitivity
+    options.matchLevel = FingerprintMatcher.Level.allCases.first { $0.rawValue == level }
+        ?? FingerprintMatcher.Level.perfect
     options.minimumDuration = 0.5
 
     let result = Scanner().run(roots: [URL(fileURLWithPath: directory)], options: options) { _ in }
@@ -186,7 +187,7 @@ guard let mode = args.first else {
     usage:
       paritydump primitives
       paritydump fp [--pcm-dir DIR] FILE...
-      paritydump scan DIR SENSITIVITY
+      paritydump scan DIR LEVEL
 
     """.data(using: .utf8)!)
     exit(2)
@@ -205,8 +206,8 @@ case "fp":
     }
     dumpFingerprints(files: rest, pcmDir: pcmDir)
 case "scan":
-    guard args.count >= 3, let sensitivity = Double(args[2]) else { exit(2) }
-    dumpScan(directory: args[1], sensitivity: sensitivity)
+    guard args.count >= 3 else { exit(2) }
+    dumpScan(directory: args[1], level: args[2])
 default:
     exit(2)
 }

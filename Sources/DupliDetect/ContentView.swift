@@ -265,13 +265,15 @@ struct OptionsView: View {
 
             if model.options.findSimilarAudio {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Match strictness").font(.callout)
-                        Spacer()
-                        Text(strictnessLabel).font(.caption).foregroundColor(.secondary)
+                    Text("Match strictness").font(.callout)
+                    Picker("", selection: $model.options.matchLevel) {
+                        ForEach(FingerprintMatcher.Level.allCases) { level in
+                            Text(level.rawValue).tag(level)
+                        }
                     }
-                    Slider(value: $model.options.sensitivity, in: 0...1)
-                    Text(strictnessHelp).font(.caption2).foregroundColor(.secondary)
+                    .labelsHidden()
+                    Text(model.options.matchLevel.explanation)
+                        .font(.caption2).foregroundColor(.secondary)
                 }
                 .padding(.leading, 18)
             }
@@ -312,18 +314,5 @@ struct OptionsView: View {
         Text(text).font(.caption.weight(.semibold)).foregroundColor(.secondary)
     }
 
-    private var strictnessLabel: String {
-        switch model.options.sensitivity {
-        case ..<0.25: return "Very strict"
-        case ..<0.5: return "Strict"
-        case ..<0.75: return "Relaxed"
-        default: return "Very relaxed"
-        }
-    }
 
-    private var strictnessHelp: String {
-        model.options.sensitivity < 0.5
-            ? "Only near-identical recordings are grouped."
-            : "Also groups heavily re-encoded or edited copies. Review these before deleting."
-    }
 }
