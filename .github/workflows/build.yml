@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest, macos-13]
+        os: [ubuntu-22.04, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -82,6 +82,29 @@ jobs:
           cargo run --release --manifest-path rust/Cargo.toml --bin ddcli -- \
             scan testdata/fixtures --json > actual.json
           python Tools/check_expected.py testdata/golden/scan-fixtures.json actual.json
+
+  # macOS runners are scarce and have sat queued for entire runs. The macOS
+  # product is the Swift app, which is built and tested on the developer's own
+  # machine, so this job is informational and must never gate packaging.
+  test-macos:
+    name: test (macos, informational)
+    runs-on: macos-13
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: Unit and parity tests
+        working-directory: rust
+        run: cargo test --release --workspace
+      - name: Self-test
+        working-directory: rust
+        run: cargo run --release --bin ddcli -- selftest
 
   package:
     name: package (${{ matrix.target }})
