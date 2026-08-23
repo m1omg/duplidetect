@@ -18,13 +18,22 @@ for g in sorted(set(expected) - set(actual)):
     problems.append(f"missing group: {g[0]} {list(g[1])}")
 for g in sorted(set(actual) - set(expected)):
     problems.append(f"unexpected group: {g[0]} {list(g[1])}")
+# Git does not preserve modification times, so on a fresh checkout every file
+# shares the checkout timestamp and these two rules legitimately pick an
+# arbitrary member. Comparing them would test the clock, not the code.
+TIME_DEPENDENT = {"Oldest file", "Newest file"}
+
 for g in sorted(set(expected) & set(actual)):
     for rule, keeper in expected[g]["keepers"].items():
+        if rule in TIME_DEPENDENT:
+            continue
         got = actual[g]["keepers"].get(rule)
         if got != keeper:
             problems.append(f"keeper differs {list(g[1])} [{rule}]: expected {keeper}, got {got}")
 
-lines = [f"{len(actual)} groups checked against the reference"]
+lines = [f"{len(actual)} groups checked against the reference "
+         f"(keep rules compared except {', '.join(sorted(TIME_DEPENDENT))}, "
+         f"which depend on file timestamps a checkout does not preserve)"]
 lines += ["  " + p for p in problems]
 if problems:
     lines.append("")
