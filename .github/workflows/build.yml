@@ -39,7 +39,19 @@ jobs:
 
       - name: Unit and parity tests
         working-directory: rust
-        run: cargo test --release --workspace
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --release --workspace -- --nocapture 2>&1 | tee /tmp/tests.txt || {
+            {
+              echo "### Test failures on ${{ matrix.os }}"
+              echo
+              echo '```'
+              grep -E "^(test |thread |assertion|  )" /tmp/tests.txt | tail -60
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
 
       # Proves the algorithm agrees with the macOS reference on this machine,
       # not merely that it compiled.

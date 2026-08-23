@@ -1,0 +1,15 @@
+# Audio fixtures and reference vectors are binary. Without this, Git on Windows
+# applies CRLF translation to any file it heuristically decides is text, which
+# would silently corrupt the test corpus and make parity results meaningless.
+* -text
+
+*.wav  binary
+*.aiff binary
+*.flac binary
+*.mp3  binary
+*.m4a  binary
+*.ogg  binary
+*.caf  binary
+*.opus binary
+*.f32le binary
+*.icns binary
