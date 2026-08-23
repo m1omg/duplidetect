@@ -159,7 +159,45 @@ jobs:
           echo "--- runtime library dependencies ---"
           ldd dist/DupliDetect/DupliDetect || true
 
+      # A single self-contained binary does not need AppImage's dependency
+      # bundling, but it does make the result one file you can chmod +x and
+      # double-click, instead of an archive to unpack first. Both are shipped.
+      - name: Build AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          APPDIR=AppDir
+          mkdir -p $APPDIR/usr/bin $APPDIR/usr/share/applications \
+                   $APPDIR/usr/share/icons/hicolor/256x256/apps
+          cp rust/target/release/duplidetect $APPDIR/usr/bin/DupliDetect
+          cp rust/target/release/ddcli       $APPDIR/usr/bin/ddcli
+          cp packaging/DupliDetect.desktop   $APPDIR/usr/share/applications/
+          cp packaging/DupliDetect.desktop   $APPDIR/
+          cp packaging/duplidetect.png       $APPDIR/duplidetect.png
+          cp packaging/duplidetect.png       $APPDIR/usr/share/icons/hicolor/256x256/apps/
+          cat > $APPDIR/AppRun <<'RUN'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/DupliDetect" "$@"
+          RUN
+          chmod +x $APPDIR/AppRun $APPDIR/usr/bin/*
+
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          # The runner has no FUSE, so extract-and-run the tool itself.
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run \
+            $APPDIR dist/DupliDetect-x86_64.AppImage
+          chmod +x dist/DupliDetect-x86_64.AppImage
+          ls -la dist/
+
       - uses: actions/upload-artifact@v4
         with:
           name: DupliDetect-${{ matrix.target }}
           path: dist/DupliDetect
+
+      - name: Upload AppImage
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: DupliDetect-linux-AppImage
+          path: dist/DupliDetect-x86_64.AppImage

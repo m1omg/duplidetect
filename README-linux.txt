@@ -1,12 +1,24 @@
 DupliDetect for Linux
 =====================
 
-Unpack anywhere and run ./DupliDetect. There is nothing to install, no root
-access needed, and no packages to add.
+There are two downloads; either is fine, and neither installs anything or
+needs root access.
 
-If the file is not already executable:
+  DupliDetect-x86_64.AppImage   one file. Make it executable and run it:
+                                    chmod +x DupliDetect-x86_64.AppImage
+                                    ./DupliDetect-x86_64.AppImage
+                                Most desktops will also let you just
+                                double-click it once it is executable.
 
-    chmod +x DupliDetect ddcli
+  DupliDetect-linux-x86_64      a folder with the plain binaries, if you would
+                                rather not use an AppImage:
+                                    chmod +x DupliDetect ddcli
+                                    ./DupliDetect
+
+The AppImage is the simpler of the two: one file, nothing to unpack. It needs
+libfuse2, which Linux Mint already has. On a system without it, either install
+libfuse2 or run the AppImage with --appimage-extract-and-run, or just use the
+plain binaries instead.
 
 Requirements
 ------------

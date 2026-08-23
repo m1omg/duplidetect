@@ -54,9 +54,10 @@ testdata/         committed fixtures and the reference vectors
 ```
 
 Windows gets a portable `DupliDetect.exe` — no installer, no admin rights, no
-VC++ redistributable. Linux gets a tarball containing a single binary that needs
-only glibc 2.35+, X11 or Wayland, and OpenGL: nothing to install. Both are built
-and tested on real Windows and Linux by GitHub Actions.
+VC++ redistributable. Linux gets both an AppImage (one file, `chmod +x`, run)
+and the plain binaries, needing only glibc 2.35+, X11 or Wayland, and OpenGL:
+nothing to install either way. Both platforms are built *and tested* on real
+Windows and Linux by GitHub Actions.
 
 ### Proving the port matches
 
