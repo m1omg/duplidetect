@@ -42,14 +42,29 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo test --release --workspace -- --nocapture 2>&1 | tee /tmp/tests.txt || {
+          cargo test --release --workspace -- --nocapture 2>&1 | tee "$RUNNER_TEMP/tests.txt" || {
             {
               echo "### Test failures on ${{ matrix.os }}"
               echo
               echo '```'
-              grep -E "^(test |thread |assertion|  )" /tmp/tests.txt | tail -60
+              tail -80 "$RUNNER_TEMP/tests.txt"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            # Also emit the failure as workflow annotations, which are readable
+            # through the public API without repository admin rights.
+            python - "$RUNNER_TEMP/tests.txt" <<'EOF'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+          keep = re.compile(r"(FAILED|panicked at|assertion|left:|right:|^error(\[|:)|^\s+--> )")
+          lines = [l.rstrip() for l in text.splitlines() if keep.search(l)]
+          seen, out = set(), []
+          for l in lines:
+              if l not in seen:
+                  seen.add(l); out.append(l)
+          for l in out[:30]:
+              msg = l.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::error::{msg}")
+          EOF
             exit 1
           }
 
