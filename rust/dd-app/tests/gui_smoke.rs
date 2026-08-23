@@ -30,6 +30,16 @@ fn fixtures() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/fixtures"))
 }
 
+/// Guards the Windows bug where every component of an absolute path was tested
+/// for hiddenness, and the volume root's hidden attribute excluded every file.
+#[test]
+fn absolute_paths_are_scanned() {
+    let options = dd_app::scanner::ScanOptions::default();
+    let found = dd_app::scanner::collect(&[fixtures()], &options);
+    assert!(found.len() >= 17, "expected the fixtures, found {}", found.len());
+    assert!(found.iter().all(|f| f.path.is_absolute()));
+}
+
 #[test]
 fn empty_state_renders() {
     let ctx = egui::Context::default();

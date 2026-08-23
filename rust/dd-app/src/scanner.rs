@@ -58,24 +58,32 @@ pub enum Phase {
     Finished,
 }
 
-/// Hidden-file rules differ by platform: a leading dot on Unix, the hidden
+/// Whether a single entry is hidden: a leading dot on Unix, the hidden
 /// attribute on Windows.
-#[cfg(windows)]
-fn is_hidden(path: &Path) -> bool {
-    use std::os::windows::fs::MetadataExt;
-    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .map(|n| n.starts_with('.'))
-        .unwrap_or(false)
-        || std::fs::metadata(path)
-            .map(|m| m.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0)
-            .unwrap_or(false)
-}
-
-#[cfg(not(windows))]
-fn is_hidden(path: &Path) -> bool {
-    path.file_name().and_then(|n| n.to_str()).map(|n| n.starts_with('.')).unwrap_or(false)
+///
+/// Only the entry's own name is examined, never its ancestors. Two reasons.
+/// A folder the user explicitly chose is theirs to scan even if it sits inside
+/// a dot-directory. And on Windows a volume root carries FILE_ATTRIBUTE_HIDDEN,
+/// so testing every component of an absolute path marked *every file on the
+/// disk* as hidden — the scanner found nothing at all.
+fn is_hidden(entry: &walkdir::DirEntry) -> bool {
+    if entry.depth() == 0 {
+        return false; // the chosen root itself is never filtered out
+    }
+    if entry.file_name().to_str().map(|n| n.starts_with('.')).unwrap_or(false) {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+        if let Ok(meta) = entry.metadata() {
+            if meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0 {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// A stable identity for a file, so the same one reached by two paths is only
@@ -91,17 +99,17 @@ pub fn collect(roots: &[PathBuf], options: &ScanOptions) -> Vec<AudioFile> {
     let mut files = Vec::new();
 
     for root in roots {
+        let skip_hidden = options.skip_hidden_files;
         let walker = WalkDir::new(root)
             .follow_links(false)
-            .max_depth(if options.include_subfolders { usize::MAX } else { 1 });
-        for entry in walker.into_iter().filter_map(|e| e.ok()) {
+            .max_depth(if options.include_subfolders { usize::MAX } else { 1 })
+            .into_iter()
+            // Filtering during descent also prunes hidden directories, so their
+            // contents are never walked.
+            .filter_entry(move |e| !(skip_hidden && is_hidden(e)));
+        for entry in walker.filter_map(|e| e.ok()) {
             let path = entry.path();
             if !entry.file_type().is_file() || !formats::is_audio(path) {
-                continue;
-            }
-            if options.skip_hidden_files
-                && path.components().any(|c| is_hidden(Path::new(c.as_os_str())))
-            {
                 continue;
             }
             let Ok(meta) = entry.metadata() else { continue };
