@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       # egui needs X11/Wayland and GL headers to build on Linux; ALSA is for
       # preview playback. None of this is needed by users at runtime beyond the
@@ -44,11 +47,14 @@ jobs:
         working-directory: rust
         run: cargo run --release --bin ddcli -- selftest
 
+      # Uses cargo run so the binary name and extension stay correct on every
+      # platform, and so the binary is guaranteed to have been built.
       - name: Scan the fixtures and check the expected groups
         shell: bash
         run: |
-          rust/target/release/ddcli scan testdata/fixtures --json > actual.json
-          python3 Tools/check_expected.py testdata/golden/scan-fixtures.json actual.json
+          cargo run --release --manifest-path rust/Cargo.toml --bin ddcli -- \
+            scan testdata/fixtures --json > actual.json
+          python Tools/check_expected.py testdata/golden/scan-fixtures.json actual.json
 
   package:
     name: package (${{ matrix.target }})
