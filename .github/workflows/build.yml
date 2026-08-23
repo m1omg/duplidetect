@@ -1,0 +1,109 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-13]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      # egui needs X11/Wayland and GL headers to build on Linux; ALSA is for
+      # preview playback. None of this is needed by users at runtime beyond the
+      # libraries every desktop already ships.
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+                                  libgl1-mesa-dev libwayland-dev libxkbcommon-dev libasound2-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Unit and parity tests
+        working-directory: rust
+        run: cargo test --release --workspace
+
+      # Proves the algorithm agrees with the macOS reference on this machine,
+      # not merely that it compiled.
+      - name: Self-test
+        working-directory: rust
+        run: cargo run --release --bin ddcli -- selftest
+
+      - name: Scan the fixtures and check the expected groups
+        shell: bash
+        run: |
+          rust/target/release/ddcli scan testdata/fixtures --json > actual.json
+          python3 Tools/check_expected.py testdata/golden/scan-fixtures.json actual.json
+
+  package:
+    name: package (${{ matrix.target }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x86_64
+          - os: ubuntu-22.04
+            target: linux-x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+                                  libgl1-mesa-dev libwayland-dev libxkbcommon-dev libasound2-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Build release binaries
+        working-directory: rust
+        run: cargo build --release --bin duplidetect --bin ddcli
+
+      - name: Stage Windows package
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist/DupliDetect
+          cp rust/target/release/duplidetect.exe dist/DupliDetect/DupliDetect.exe
+          cp rust/target/release/ddcli.exe       dist/DupliDetect/ddcli.exe
+          cp README-windows.txt                  dist/DupliDetect/README.txt
+
+      - name: Stage Linux package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p dist/DupliDetect
+          cp rust/target/release/duplidetect dist/DupliDetect/DupliDetect
+          cp rust/target/release/ddcli       dist/DupliDetect/ddcli
+          cp README-linux.txt                dist/DupliDetect/README.txt
+          cp packaging/DupliDetect.desktop   dist/DupliDetect/
+          chmod +x dist/DupliDetect/DupliDetect dist/DupliDetect/ddcli
+          echo "--- runtime library dependencies ---"
+          ldd dist/DupliDetect/DupliDetect || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DupliDetect-${{ matrix.target }}
+          path: dist/DupliDetect

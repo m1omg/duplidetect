@@ -1,0 +1,32 @@
+[package]
+name = "dd-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dd-core = { path = "../dd-core" }
+symphonia = { version = "0.5", default-features = false, features = [
+    "wav", "pcm", "adpcm", "flac", "ogg", "vorbis",
+    "mp3", "aac", "alac", "isomp4", "aiff", "caf",
+] }
+rubato = "0.15"
+rayon = "1"
+walkdir = "2"
+serde_json = "1"
+eframe = { version = "0.31", default-features = false, features = ["glow", "x11", "wayland", "default_fonts", "accesskit"] }
+egui = "0.31"
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+trash = "5"
+rodio = { version = "0.20", default-features = false, features = ["symphonia-all"] }
+
+[[bin]]
+name = "duplidetect"
+path = "src/bin/duplidetect.rs"
+
+[[bin]]
+name = "ddcli"
+path = "src/bin/ddcli.rs"
+
+[[bin]]
+name = "ddprobe"
+path = "src/bin/ddprobe.rs"

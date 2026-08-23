@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DupliDetect
+Comment=Find duplicate audio files, including copies saved in different formats
+Exec=DupliDetect
+Icon=duplidetect
+Terminal=false
+Categories=AudioVideo;Audio;Utility;
