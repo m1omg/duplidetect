@@ -113,17 +113,55 @@ jobs:
           chmod +x "dist/DupliDetect-$V-x86_64.AppImage"
           ls -la dist/
 
-      - name: Publish to the release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: DupliDetect ${{ steps.version.outputs.version }}
-          draft: false
-          fail_on_unmatched_files: true
-          files: |
+          name: release-${{ matrix.target }}
+          path: |
             dist/*.zip
             dist/*.tar.gz
             dist/*.AppImage
+          if-no-files-found: error
+
+  # One job writes the release. Each build produces only its own platform's
+  # files, so letting both matrix jobs publish meant each failed on the other's
+  # missing patterns -- and had they succeeded, they would have raced to create
+  # the same release.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: staging
+
+      - name: Collect the assets
+        id: collect
+        shell: bash
+        run: |
+          mkdir -p dist
+          find staging -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.AppImage' \) \
+            -exec cp {} dist/ ';'
+          ls -la dist/
+          COUNT=$(ls dist | wc -l)
+          echo "found $COUNT asset(s)"
+          # Three assets are expected: Windows zip, Linux tarball, AppImage.
+          # Publishing a partial release would be worse than not publishing.
+          if [ "$COUNT" -ne 3 ]; then
+            echo "::error::expected 3 release assets, found $COUNT"
+            exit 1
+          fi
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.collect.outputs.tag }}
+          name: DupliDetect ${{ steps.collect.outputs.version }}
+          draft: false
+          fail_on_unmatched_files: true
+          files: dist/*
           body: |
             Finds duplicate audio files, including the same recording saved in
             different formats.
@@ -132,9 +170,9 @@ jobs:
 
             | Platform | File | Notes |
             |---|---|---|
-            | **Linux** | `DupliDetect-${{ steps.version.outputs.version }}-x86_64.AppImage` | One file. `chmod +x`, then run it. |
-            | **Linux** | `DupliDetect-${{ steps.version.outputs.version }}-linux-x86_64.tar.gz` | Plain binaries, if you would rather not use an AppImage. |
-            | **Windows** | `DupliDetect-${{ steps.version.outputs.version }}-windows-x86_64.zip` | Portable. No installer, no admin rights. |
+            | **Linux** | `DupliDetect-${{ steps.collect.outputs.version }}-x86_64.AppImage` | One file. `chmod +x`, then run it. |
+            | **Linux** | `DupliDetect-${{ steps.collect.outputs.version }}-linux-x86_64.tar.gz` | Plain binaries, if you would rather not use an AppImage. |
+            | **Windows** | `DupliDetect-${{ steps.collect.outputs.version }}-windows-x86_64.zip` | Portable. No installer, no admin rights. |
 
             Nothing to install on either platform. Windows shows a SmartScreen
             prompt on first run because the build is not code-signed: choose
