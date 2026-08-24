@@ -54,7 +54,7 @@ struct ResultsView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
                 ForEach(result.groups) { group in
-                    GroupCard(group: group, model: model, player: player)
+                    GroupCard(group: group, level: result.matchLevel, model: model, player: player)
                 }
             }
             .padding(16)
@@ -109,6 +109,7 @@ struct ResultsView: View {
 
 struct GroupCard: View {
     let group: DuplicateGroup
+    let level: FingerprintMatcher.Level
     @ObservedObject var model: AppModel
     @ObservedObject var player: PreviewPlayer
 
@@ -170,19 +171,32 @@ struct GroupCard: View {
         .buttonStyle(.plain)
     }
 
+    /// At Perfect match the app has asserted that these are the same recording
+    /// end to end, so it says that. A percentage there would undercut a
+    /// conclusion it is certain of: the figure is the weakest pair in the
+    /// group, which for a cross-format group is always two different lossy
+    /// codecs compared against each other, and so measures codec aggressiveness
+    /// rather than whether the recording is the same one.
+    private var asserted: Bool {
+        group.kind == .exact || level == .perfect
+    }
+
+    private var badgeText: String {
+        if group.kind == .exact { return "Identical" }
+        if level == .perfect { return "Same recording" }
+        return "\(Format.percent(group.confidence)) match"
+    }
+
     private var badge: some View {
         HStack(spacing: 4) {
             Image(systemName: group.kind == .exact ? "equal.circle.fill" : "waveform")
                 .font(.caption)
-            Text(group.kind == .exact ? "Identical" : "\(Format.percent(group.confidence)) match")
-                .font(.caption.weight(.medium))
+            Text(badgeText).font(.caption.weight(.medium))
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
-        .background(
-            Capsule().fill((group.kind == .exact ? Color.green : Color.orange).opacity(0.15))
-        )
-        .foregroundColor(group.kind == .exact ? .green : .orange)
+        .background(Capsule().fill((asserted ? Color.green : Color.orange).opacity(0.15)))
+        .foregroundColor(asserted ? .green : .orange)
     }
 }
 

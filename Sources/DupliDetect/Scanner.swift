@@ -47,6 +47,9 @@ public struct ScanResult {
     public var groups: [DuplicateGroup] = []
     public var filesScanned = 0
     public var filesSkipped: [(url: URL, reason: String)] = []
+    /// The level this scan actually ran at, so the results keep describing
+    /// themselves correctly even if the setting is changed afterwards.
+    public var matchLevel: FingerprintMatcher.Level = .perfect
 
     public var reclaimableBytes: Int64 { groups.reduce(0) { $0 + $1.reclaimableBytes } }
 }
@@ -64,6 +67,7 @@ public final class Scanner {
                     progress: @escaping (ScanPhase) -> Void) -> ScanResult {
         cancelled.value = false
         var result = ScanResult()
+        result.matchLevel = options.matchLevel
 
         progress(.collecting)
         var files = collect(roots: roots, options: options)

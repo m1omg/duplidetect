@@ -36,11 +36,24 @@ impl Default for ScanOptions {
     }
 }
 
-#[derive(Default)]
 pub struct ScanResult {
     pub groups: Vec<DuplicateGroup>,
     pub files_scanned: usize,
     pub files_skipped: Vec<(PathBuf, String)>,
+    /// The level this scan actually ran at, so the results keep describing
+    /// themselves correctly even if the setting is changed afterwards.
+    pub level: matcher::MatchLevel,
+}
+
+impl Default for ScanResult {
+    fn default() -> Self {
+        ScanResult {
+            groups: Vec::new(),
+            files_scanned: 0,
+            files_skipped: Vec::new(),
+            level: matcher::MatchLevel::Perfect,
+        }
+    }
 }
 
 impl ScanResult {
@@ -135,7 +148,7 @@ pub fn run<F: Fn(Phase) + Sync>(
     options: &ScanOptions,
     progress: F,
 ) -> ScanResult {
-    let mut result = ScanResult::default();
+    let mut result = ScanResult { level: options.level, ..ScanResult::default() };
     progress(Phase::Collecting);
     let mut files = collect(roots, options);
     result.files_scanned = files.len();

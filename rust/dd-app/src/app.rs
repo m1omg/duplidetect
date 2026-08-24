@@ -542,15 +542,27 @@ impl App {
             });
             ui.separator();
 
+            let level = result.level;
             let mut actions: Vec<(usize, AudioFile, Action)> = Vec::new();
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for (gi, group) in result.groups.iter().enumerate() {
                     let open = self.expanded.contains(&gi);
                     let header = ui.horizontal(|ui| {
                         let arrow = if open { "▾" } else { "▸" };
+                        // At Perfect match the app has asserted that these are
+                        // the same recording end to end, so it says that. A
+                        // percentage there would undercut a conclusion it is
+                        // certain of: the figure is the weakest pair in the
+                        // group, which for a cross-format group is always two
+                        // different lossy codecs compared against each other,
+                        // and so measures codec aggressiveness rather than
+                        // whether the recording is the same one.
                         let badge = match group.kind {
                             MatchKind::Exact => RichText::new(" Identical ")
                                 .color(Color32::from_rgb(40, 140, 70)).size(11.0),
+                            MatchKind::Similar if level == MatchLevel::Perfect =>
+                                RichText::new(" Same recording ")
+                                    .color(Color32::from_rgb(40, 140, 70)).size(11.0),
                             MatchKind::Similar => RichText::new(format!(" {}% match ",
                                 (group.confidence * 100.0).round() as i64))
                                 .color(Color32::from_rgb(190, 120, 30)).size(11.0),

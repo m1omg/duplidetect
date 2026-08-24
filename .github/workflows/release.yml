@@ -1,0 +1,155 @@
+name: release
+
+# Tagging v* publishes a Release. Unlike the build artifacts, release assets
+# never expire, need no GitHub account to download, and are not wrapped in an
+# extra zip by the download itself.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x86_64
+          - os: ubuntu-22.04
+            target: linux-x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+                                  libgl1-mesa-dev libwayland-dev libxkbcommon-dev libasound2-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      # A release must never ship something that failed its own checks.
+      - name: Tests
+        working-directory: rust
+        run: cargo test --release --workspace
+
+      - name: Self-test
+        working-directory: rust
+        run: cargo run --release --bin ddcli -- selftest
+
+      - name: Verify grouping on the fixtures
+        shell: bash
+        run: |
+          cargo run --release --manifest-path rust/Cargo.toml --bin ddcli -- \
+            scan testdata/fixtures --json > actual.json
+          python Tools/check_expected.py testdata/golden/scan-fixtures.json actual.json
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG"            >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}"    >> "$GITHUB_OUTPUT"
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          V=${{ steps.version.outputs.version }}
+          DIR="DupliDetect-$V-windows-x86_64"
+          mkdir -p "dist/$DIR"
+          cp rust/target/release/duplidetect.exe "dist/$DIR/DupliDetect.exe"
+          cp rust/target/release/ddcli.exe       "dist/$DIR/ddcli.exe"
+          cp README-windows.txt                  "dist/$DIR/README.txt"
+          cd dist && 7z a -tzip "$DIR.zip" "$DIR" >/dev/null && ls -la
+
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          V=${{ steps.version.outputs.version }}
+          DIR="DupliDetect-$V-linux-x86_64"
+          mkdir -p "dist/$DIR"
+          cp rust/target/release/duplidetect "dist/$DIR/DupliDetect"
+          cp rust/target/release/ddcli       "dist/$DIR/ddcli"
+          cp README-linux.txt                "dist/$DIR/README.txt"
+          cp packaging/DupliDetect.desktop   "dist/$DIR/"
+          chmod +x "dist/$DIR/DupliDetect" "dist/$DIR/ddcli"
+          tar -C dist -czf "dist/$DIR.tar.gz" "$DIR"
+
+          APPDIR=AppDir
+          mkdir -p $APPDIR/usr/bin $APPDIR/usr/share/applications \
+                   $APPDIR/usr/share/icons/hicolor/256x256/apps
+          cp rust/target/release/duplidetect $APPDIR/usr/bin/DupliDetect
+          cp rust/target/release/ddcli       $APPDIR/usr/bin/ddcli
+          cp packaging/DupliDetect.desktop   $APPDIR/usr/share/applications/
+          cp packaging/DupliDetect.desktop   $APPDIR/
+          cp packaging/duplidetect.png       $APPDIR/duplidetect.png
+          cp packaging/duplidetect.png       $APPDIR/usr/share/icons/hicolor/256x256/apps/
+          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/DupliDetect" "$@"\n' > $APPDIR/AppRun
+          chmod +x $APPDIR/AppRun $APPDIR/usr/bin/*
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run \
+            $APPDIR "dist/DupliDetect-$V-x86_64.AppImage"
+          chmod +x "dist/DupliDetect-$V-x86_64.AppImage"
+          ls -la dist/
+
+      - name: Publish to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: DupliDetect ${{ steps.version.outputs.version }}
+          draft: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/*.AppImage
+          body: |
+            Finds duplicate audio files, including the same recording saved in
+            different formats.
+
+            ## Download
+
+            | Platform | File | Notes |
+            |---|---|---|
+            | **Linux** | `DupliDetect-${{ steps.version.outputs.version }}-x86_64.AppImage` | One file. `chmod +x`, then run it. |
+            | **Linux** | `DupliDetect-${{ steps.version.outputs.version }}-linux-x86_64.tar.gz` | Plain binaries, if you would rather not use an AppImage. |
+            | **Windows** | `DupliDetect-${{ steps.version.outputs.version }}-windows-x86_64.zip` | Portable. No installer, no admin rights. |
+
+            Nothing to install on either platform. Windows shows a SmartScreen
+            prompt on first run because the build is not code-signed: choose
+            **More info** then **Run anyway**.
+
+            To check a build on your own machine, run `ddcli selftest`. It
+            verifies that the audio analysis there matches the reference
+            implementation exactly.
+
+            ## What it finds
+
+            The default, **Perfect match**, groups only files that are the same
+            recording from start to finish — true 1:1 duplicates, across WAV,
+            AIFF, FLAC, ALAC, MP3, AAC/M4A, CAF and Ogg Vorbis. Looser levels
+            also group excerpts and heavily re-encoded copies.
+
+            Files you remove go to the Trash or Recycle Bin, never deleted
+            outright, and a group will never let you mark every copy.
