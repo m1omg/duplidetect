@@ -54,6 +54,16 @@ If the window fails to open on a machine without graphics acceleration, try:
 
     LIBGL_ALWAYS_SOFTWARE=1 ./DupliDetect
 
+If anything goes wrong, run it from a terminal so you can see the output, and
+check /tmp/duplidetect-crash.txt -- DupliDetect writes any crash there.
+
+The "Choose Folder..." button asks your desktop for its file dialog, through
+the standard XDG portal. On a system where that service is missing, the button
+reports the problem instead of failing silently; you can always drag a folder
+onto the window, or pass folders on the command line:
+
+    ./DupliDetect ~/Music ~/Downloads
+
 Adding it to your menu
 ----------------------
 Copy DupliDetect.desktop to ~/.local/share/applications/ and edit its Exec line

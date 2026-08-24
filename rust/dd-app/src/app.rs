@@ -24,6 +24,8 @@ pub struct App {
     marked: HashSet<PathBuf>,
     expanded: HashSet<usize>,
     preview: Preview,
+    /// A folder dialog running on its own thread, if one is open.
+    folder_picker: Option<Receiver<Option<Vec<PathBuf>>>>,
     error: Option<String>,
     trashed_count: usize,
     trashed_bytes: u64,
@@ -42,6 +44,7 @@ impl Default for App {
             marked: HashSet::new(),
             expanded: HashSet::new(),
             preview: Preview::default(),
+            folder_picker: None,
             error: None,
             trashed_count: 0,
             trashed_bytes: 0,
@@ -172,13 +175,48 @@ impl App {
         };
     }
 
+    /// Opens the system folder dialog on its own thread.
+    ///
+    /// Not merely to keep the interface responsive. The dialog talks to the
+    /// desktop's portal service, whose behaviour varies by distribution and
+    /// cannot be exercised from the machine this is built on. Off the UI
+    /// thread, a failure in there ends that thread alone — the app survives and
+    /// says so, instead of taking the whole window down with it.
     fn choose_folders(&mut self) {
-        if let Some(picked) = rfd::FileDialog::new().set_title("Add Folders to Search").pick_folders() {
-            for folder in picked {
-                if !self.folders.contains(&folder) {
-                    self.folders.push(folder);
+        if self.folder_picker.is_some() {
+            return; // a dialog is already open
+        }
+        let (tx, rx) = channel();
+        self.folder_picker = Some(rx);
+        std::thread::spawn(move || {
+            let picked = rfd::FileDialog::new()
+                .set_title("Add Folders to Search")
+                .pick_folders();
+            let _ = tx.send(picked);
+        });
+    }
+
+    /// Collects the result of a folder dialog once the user has finished with it.
+    fn poll_folder_picker(&mut self) {
+        let Some(rx) = &self.folder_picker else { return };
+        match rx.try_recv() {
+            Ok(picked) => {
+                self.folder_picker = None;
+                for folder in picked.unwrap_or_default() {
+                    if !self.folders.contains(&folder) {
+                        self.folders.push(folder);
+                    }
                 }
             }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                // The dialog thread died without answering.
+                self.folder_picker = None;
+                self.error = Some(
+                    "The system file dialog could not be opened.\n\n                     Drag a folder onto this window instead, or start DupliDetect                      with a folder path on the command line."
+                        .into(),
+                );
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
         }
     }
 }
@@ -216,6 +254,11 @@ impl eframe::App for App {
             if !self.folders.contains(&folder) {
                 self.folders.push(folder);
             }
+        }
+
+        self.poll_folder_picker();
+        if self.folder_picker.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
 
         if self.scanning {
@@ -662,5 +705,70 @@ fn phase_fraction(phase: Phase) -> Option<f64> {
             Some(done as f64 / total as f64)
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The folder dialog runs on its own thread precisely because the desktop
+    /// portal cannot be exercised from the development machine. This checks the
+    /// promise that buys: if that thread dies without answering, the app
+    /// reports it and carries on, rather than hanging or going down with it.
+    #[test]
+    fn a_dead_dialog_thread_is_reported_not_fatal() {
+        let mut app = App::default();
+        let (tx, rx) = channel::<Option<Vec<PathBuf>>>();
+        app.folder_picker = Some(rx);
+
+        // A dialog thread that panics before sending anything.
+        std::thread::spawn(move || {
+            let _tx = tx;
+            panic!("simulated portal failure");
+        })
+        .join()
+        .ok();
+
+        app.poll_folder_picker();
+
+        assert!(app.folder_picker.is_none(), "the dead picker must be cleared");
+        let message = app.error.clone().expect("the failure must be reported to the user");
+        assert!(message.contains("Drag a folder"), "the message must offer a way forward: {message}");
+
+        // And the app keeps working: a second attempt is still possible.
+        app.poll_folder_picker();
+    }
+
+    /// A dialog that the user cancels yields None, which must be silent.
+    #[test]
+    fn a_cancelled_dialog_is_silent() {
+        let mut app = App::default();
+        let (tx, rx) = channel();
+        app.folder_picker = Some(rx);
+        tx.send(None).unwrap();
+
+        app.poll_folder_picker();
+
+        assert!(app.folder_picker.is_none());
+        assert!(app.error.is_none(), "cancelling is not an error");
+        assert!(app.folders.is_empty());
+    }
+
+    /// Chosen folders are added, and a repeat choice does not duplicate one.
+    #[test]
+    fn chosen_folders_are_added_once() {
+        let mut app = App::default();
+        let (tx, rx) = channel();
+        app.folder_picker = Some(rx);
+        tx.send(Some(vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")])).unwrap();
+        app.poll_folder_picker();
+        assert_eq!(app.folders.len(), 2);
+
+        let (tx, rx) = channel();
+        app.folder_picker = Some(rx);
+        tx.send(Some(vec![PathBuf::from("/tmp/a")])).unwrap();
+        app.poll_folder_picker();
+        assert_eq!(app.folders.len(), 2, "the same folder must not be added twice");
     }
 }

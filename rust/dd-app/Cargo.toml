@@ -15,7 +15,12 @@ walkdir = "2"
 serde_json = "1"
 eframe = { version = "0.31", default-features = false, features = ["glow", "x11", "wayland", "default_fonts", "accesskit"] }
 egui = "0.31"
-rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+# The portal backend needs an async runtime, and its synchronous API drives the
+# future with pollster::block_on. Pairing that with the `tokio` feature panics
+# ("there is no reactor running") the moment a dialog opens, because there is no
+# tokio runtime in this app. `async-std` is self-driving, and is rfd's own
+# default pairing. Do not swap it for `tokio` without adding a runtime.
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
 trash = "5"
 rodio = { version = "0.20", default-features = false, features = ["symphonia-all"] }
 

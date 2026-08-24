@@ -3,7 +3,29 @@
 
 use std::path::PathBuf;
 
+/// Writes panics to stderr and to a file, so a crash on a machine the
+/// developer cannot reach still leaves something to read. A GUI app launched
+/// from a desktop icon has nowhere to print, which is how a crash becomes
+/// "it just disappeared".
+fn install_panic_reporter() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let report = format!(
+            "DupliDetect {} panicked\n{}\n",
+            env!("CARGO_PKG_VERSION"),
+            info
+        );
+        eprint!("{report}");
+        let path = std::env::temp_dir().join("duplidetect-crash.txt");
+        let _ = std::fs::write(&path, &report);
+        eprintln!("(also written to {})", path.display());
+        previous(info);
+    }));
+}
+
 fn main() -> eframe::Result<()> {
+    install_panic_reporter();
+
     // Folders given on the command line are scanned on launch.
     let folders: Vec<PathBuf> = std::env::args()
         .skip(1)
